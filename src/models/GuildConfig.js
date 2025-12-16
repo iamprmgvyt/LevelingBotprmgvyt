@@ -1,22 +1,28 @@
 const { Schema, model } = require('mongoose');
 
-const GuildConfigSchema = new new Schema({
+// The fix is here: 'new Schema' instead of 'new new Schema'
+const GuildConfigSchema = new Schema({
     guildId: { type: String, required: true, unique: true },
-    prefix: { type: String, default: process.env.BOT_PREFIX || ',' },
     levelingEnabled: { type: Boolean, default: true },
     xpRate: { type: Number, default: 1.0 },
-    levelupChannelId: { type: String, default: null },
-    levelupMessage: { 
-        type: String, 
-        default: '🎉 Congratulations {user}! You reached **Level {level}**!' 
+    levelChannelId: { type: String, default: null }, // Channel for level-up announcements
+    embedColor: { type: String, default: '#0099ff' },
+    prefix: { type: String, default: ',' },
+
+    // XP Blacklists
+    blacklistedChannels: { type: [String], default: [] },
+    blacklistedRoles: { type: [String], default: [] },
+
+    // Role Rewards: [{ level: 5, roleId: '12345...' }]
+    roleRewards: { 
+        type: [
+            {
+                level: { type: Number, required: true },
+                roleId: { type: String, required: true }
+            }
+        ], 
+        default: [] 
     },
-    blacklistedChannels: [{ type: String }],
-    blacklistedRoles: [{ type: String }],
-    roleRewards: [{
-        level: { type: Number, required: true },
-        roleId: { type: String, required: true }
-    }],
-    embedColor: { type: String, default: '#3498db' }
 });
 
 module.exports = model('GuildConfig', GuildConfigSchema);
