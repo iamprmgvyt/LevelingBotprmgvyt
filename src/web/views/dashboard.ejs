@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Select a Guild</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <h1><a href="/">Leveling Bot</a></h1>
+            <span>Logged in as <%= user.username %></span>
+            <a href="/auth/logout">Logout</a>
+        </nav>
+    </header>
+
+    <main>
+        <h2>Select a Server to Configure</h2>
+        <p>Showing servers where you have Administrator permissions.</p>
+
+        <div class="guild-list">
+            <% guilds.forEach(guild => { %>
+                <div class="guild-card <%= guild.inBot ? 'in-bot' : 'not-in-bot' %>">
+                    <img src="<%= guild.iconURL %>" alt="<%= guild.name %> icon" onerror="this.src='/images/default-icon.png';">
+                    <h3><%= guild.name %></h3>
+                    <% if (guild.inBot) { %>
+                        <p class="status success">Bot is in server</p>
+                        <a href="/dashboard/<%= guild.id %>" class="btn-manage">Manage Settings</a>
+                    <% } else { %>
+                        <p class="status warning">Bot not in server</p>
+                        <a href="<YOUR_BOT_INVITE_LINK>" target="_blank" class="btn-invite">Invite Bot</a>
+                    <% } %>
+                </div>
+            <% }); %>
+        </div>
+    </main>
+</body>
+</html>

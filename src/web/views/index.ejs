@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Leveling Bot Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <h1>Leveling Bot</h1>
+            <% if (user) { %>
+                <span>Hello, <%= user.username %>#<%= user.discriminator %>!</span>
+                <a href="/dashboard">Dashboard</a>
+                <a href="/auth/logout">Logout</a>
+            <% } else { %>
+                <a href="/auth/discord">Login with Discord</a>
+            <% } %>
+        </nav>
+    </header>
+
+    <main>
+        <% if (user) { %>
+            <h2>Welcome Back!</h2>
+            <p>Click the Dashboard link above to start managing your servers.</p>
+        <% } else { %>
+            <h2>Welcome to the Leveling Bot Configuration Panel</h2>
+            <p>Manage XP rates, role rewards, and blacklists for all your Discord servers.</p>
+            <a href="/auth/discord" class="btn-login">Login with Discord to Continue</a>
+        <% } %>
+    </main>
+</body>
+</html>

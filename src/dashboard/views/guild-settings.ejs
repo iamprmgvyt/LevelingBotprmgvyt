@@ -1,0 +1,18 @@
+<div class="setting-card">
+    <h3>XP Rate Multiplier</h3>
+    <p>Current Rate: <strong><%= config.xpRate %>x</strong></p>
+    <form action="/dashboard/<%= guild.id %>/xprate" method="POST">
+        <label for="xpRate">New Rate (e.g., 1.5):</label>
+        <input type="number" step="0.1" name="xpRate" id="xpRate" value="<%= config.xpRate %>" required>
+        <button type="submit">Update XP Rate</button>
+    </form>
+</div>
+
+<div class="setting-card">
+    <h3>Top 5 Server Leaderboard Preview</h3>
+    <ul>
+        <% topUsers.forEach((user, index) => { %>
+            <li>#<%= index + 1 %> - ID: <%= user.userId %> | Lvl: <%= user.level %> | XP: <%= user.xp %></li>
+        <% }); %>
+    </ul>
+</div>
