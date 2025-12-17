@@ -1,13 +1,14 @@
-const GuildConfig = require('../models/GuildConfig');
+const mongoose = require('mongoose');
 
-async function getGuildConfig(guildId) {
-    let config = await GuildConfig.findOne({ guildId });
-    if (!config) {
-        // Create default config if none exists
-        config = new GuildConfig({ guildId, prefix: '!', levelingEnabled: true });
-        await config.save();
+const connectDB = async () => {
+    try {
+        await mongoose.connect(process.env.MONGODB_URI);
+        // console.log('✅ MongoDB connected'); // Optional, since you log it in index.js
+    } catch (err) {
+        console.error('❌ MongoDB connection error:', err);
+        process.exit(1);
     }
-    return config;
-}
+};
 
-module.exports = { getGuildConfig };
+// Ensure this matches!
+module.exports = { connectDB };
