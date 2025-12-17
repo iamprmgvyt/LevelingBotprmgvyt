@@ -1,33 +1,32 @@
 const { PermissionsBitField, ChannelType, EmbedBuilder } = require('discord.js');
-const { getGuildConfig } = require('../../utils/database');
 
 module.exports = {
     data: {
         name: 'setlevelchannel',
         description: 'Sets the channel where level-up announcements will be posted.',
         usage: '[,setlevelchannel <#channel | off>]',
-        adminOnly: true // Crucial permission flag
+        adminOnly: true 
     },
     /**
-     * Executes the setlevelchannel command.
      * @param {Message} message - The Discord message object.
      * @param {string[]} args - Command arguments.
      * @param {Client} client - The Discord client.
+     * @param {Object} config - The Guild Config from database.
      */
-    async execute(message, args, client) {
-        // Permission check
+    async execute(message, args, client, config) {
+        // 1. Permission check
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
             return message.reply({ content: '❌ **Permission Denied.** You must be an **Administrator** to use this command.' });
         }
 
         const channelArgument = args[0];
-        const config = await getGuildConfig(message.guild.id);
-        const embedColor = config.embedColor;
+        // FIXED: Always ensure embedColor has a value to prevent CombinedError
+        const embedColor = config.embedColor || '#5865F2'; 
         let responseMessage = '';
         
         // --- Option 1: Disable Announcements ---
         if (channelArgument && channelArgument.toLowerCase() === 'off') {
-            config.levelupChannelId = null;
+            config.levelUpChannel = null; // Use the same field name as your Schema
             await config.save();
             responseMessage = '📣 Level-up announcements have been **disabled**. No channel is currently set.';
             
@@ -43,7 +42,7 @@ module.exports = {
         const channel = message.mentions.channels.first() || message.guild.channels.cache.get(channelArgument);
 
         if (!channel || channel.type !== ChannelType.GuildText) {
-            const currentChannel = config.levelupChannelId ? `<#${config.levelupChannelId}>` : 'None';
+            const currentChannel = config.levelUpChannel ? `<#${config.levelUpChannel}>` : 'None';
             return message.reply(`❌ Invalid channel or channel type. Please mention a text channel (e.g., \`,setlevelchannel #announcements\`). Current channel: **${currentChannel}**`);
         }
         
@@ -54,13 +53,14 @@ module.exports = {
         }
 
         try {
-            config.levelupChannelId = channel.id;
+            // Update the config field (ensure this matches your GuildConfig Schema)
+            config.levelUpChannel = channel.id;
             await config.save();
             
             responseMessage = `Level-up announcements will now be posted in ${channel}.`;
 
             const successEmbed = new EmbedBuilder()
-                .setColor(embedColor)
+                .setColor(embedColor) // FIXED: Will now be '#5865F2' if DB is empty
                 .setTitle('✅ Level-Up Channel Set')
                 .setDescription(responseMessage)
                 .addFields({
@@ -69,7 +69,6 @@ module.exports = {
                 })
                 .setFooter({ text: `Set by ${message.author.tag}` });
                 
-            // Send the confirmation to the channel where the command was run
             await message.reply({ embeds: [successEmbed] });
 
             // Optional: Send a test message to the newly set channel
@@ -81,7 +80,7 @@ module.exports = {
 
         } catch (error) {
             console.error(`Error setting level channel for guild ${message.guild.id}:`, error);
-            message.reply('❌ An error occurred while trying to save the level-up channel ID to the database.');
+            message.reply('❌ An error occurred while trying to save to the database.');
         }
     },
 };
