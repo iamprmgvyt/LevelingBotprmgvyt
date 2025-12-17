@@ -1,70 +1,75 @@
-const router = require('express').Router();
-const { PermissionsBitField } = require('discord.js');
+const express = require('express');
+const router = express.Router();
+const UserLevel = require('../../models/UserLevel');
 const { getGuildConfig } = require('../../utils/database');
 
-function isAuthenticated(req, res, next) {
+// Middleware to check if user is logged in
+const isAuthenticated = (req, res, next) => {
     if (req.isAuthenticated()) return next();
-    res.redirect('/auth/discord');
-}
+    res.redirect('/auth/login');
+};
 
-// 1. Dashboard Main List (GET)
-router.get('/', isAuthenticated, (req, res) => {
+// 1. MAIN DASHBOARD PAGE (List of Servers)
+router.get('/', isAuthenticated, async (req, res) => {
     const client = req.app.get('discordClient');
-    const guilds = req.user.guilds.filter(g => {
-        const perms = new PermissionsBitField(BigInt(g.permissions));
-        return perms.has(PermissionsBitField.Flags.Administrator);
-    }).map(g => ({
-        ...g,
-        inBot: client.guilds.cache.has(g.id)
-    }));
-    res.render('dashboard', { user: req.user, guilds });
+    
+    // Filter servers where the user has 'Manage Guild' or 'Administrator' permissions
+    const guilds = req.user.guilds.filter(guild => {
+        const permissions = BigInt(guild.permissions);
+        return (permissions & BigInt(0x20)) === BigInt(0x20) || (permissions & BigInt(0x8)) === BigInt(0x8);
+    });
+
+    res.render('dashboard/index', {
+        user: req.user,
+        guilds: guilds,
+        client: client
+    });
 });
 
-// 2. Server Configuration Page (GET)
-router.get('/:guildId', isAuthenticated, async (req, res) => {
+// 2. SERVER SETTINGS PAGE
+router.get('/server/:guildId', isAuthenticated, async (req, res) => {
+    const { guildId } = req.params;
+    const client = req.app.get('discordClient');
+    const guild = client.guilds.cache.get(guildId);
+
+    if (!guild) {
+        return res.redirect('https://discord.com/api/oauth2/authorize?client_id=' + client.user.id + '&permissions=8&scope=bot');
+    }
+
     try {
-        const client = req.app.get('discordClient');
-        const guild = client.guilds.cache.get(req.params.guildId);
-        if (!guild) return res.status(404).send("Bot not in server.");
+        const config = await getGuildConfig(guildId);
+        const topUsers = await UserLevel.find({ guildId }).sort({ xp: -1 }).limit(5);
 
-        const config = await getGuildConfig(req.params.guildId);
-        const roleRewards = (config.roleRewards || [])
-            .map(r => ({ level: r.level, role: guild.roles.cache.get(r.roleId) }))
-            .filter(r => r.role)
-            .sort((a, b) => a.level - b.level);
-
-        res.render('guildConfig', { user: req.user, guild, config, roleRewards });
-    } catch (err) {
-        res.status(500).send("Internal Error");
+        res.render('dashboard/server', {
+            user: req.user,
+            guild: guild,
+            config: config,
+            topUsers: topUsers
+        });
+    } catch (error) {
+        console.error('Dashboard Error:', error);
+        res.status(500).send('Internal Server Error');
     }
 });
 
-// 3. Update Settings Handler (POST) - FULL FIXED
-router.post('/:guildId/update', isAuthenticated, async (req, res) => {
+// 3. SAVE SETTINGS (POST)
+router.post('/server/:guildId/save', isAuthenticated, async (req, res) => {
+    const { guildId } = req.params;
+    const { prefix, levelingEnabled, xpRate, embedColor } = req.body;
+
     try {
-        const { guildId } = req.params;
-        const client = req.app.get('discordClient');
-
-        // Security: Verify Admin perms again
-        const userGuild = req.user.guilds.find(g => g.id === guildId);
-        const perms = new PermissionsBitField(BigInt(userGuild.permissions));
-        if (!perms.has(PermissionsBitField.Flags.Administrator)) return res.status(403).send("Forbidden");
-
         const config = await getGuildConfig(guildId);
         
-        // Update values from the form body
-        if (req.body.prefix) config.prefix = req.body.prefix.substring(0, 5);
-        
-        // HTML checkboxes only exist in req.body if checked
-        config.levelingEnabled = req.body.levelingEnabled === 'on';
+        config.prefix = prefix || config.prefix;
+        config.levelingEnabled = levelingEnabled === 'on';
+        config.xpRate = parseFloat(xpRate) || 1.0;
+        config.embedColor = embedColor || config.embedColor;
 
         await config.save();
-        
-        // Redirect back to page with a success flag
-        res.redirect(`/dashboard/${guildId}?success=true`);
-    } catch (err) {
-        console.error(err);
-        res.status(500).send("Failed to save settings.");
+        res.redirect(`/dashboard/server/${guildId}?success=true`);
+    } catch (error) {
+        console.error('Save Error:', error);
+        res.status(500).send('Error saving configuration');
     }
 });
 
