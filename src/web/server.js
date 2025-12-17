@@ -2,21 +2,21 @@ const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
 const path = require('path');
-require('../../config/passport-setup'); // Ensure this exists for Discord OAuth
+
+// This finds the passport-setup.js file regardless of deep nesting
+const passportPath = path.join(__dirname, '..', 'config', 'passport-setup.js');
+require(passportPath);
 
 const app = express();
-
-// RENDER FIX: Use process.env.PORT (Render's dynamic port)
 const PORT = process.env.PORT || 3000;
 
 const startDashboard = () => {
-    // Middleware
     app.set('view engine', 'ejs');
     app.set('views', path.join(__dirname, 'views'));
     app.use(express.static(path.join(__dirname, 'public')));
     
     app.use(session({
-        secret: process.env.SESSION_SECRET || 'fallback-secret',
+        secret: process.env.SESSION_SECRET || 'keyboard-cat-leveling',
         resave: false,
         saveUninitialized: false
     }));
@@ -24,18 +24,14 @@ const startDashboard = () => {
     app.use(passport.initialize());
     app.use(passport.session());
 
-    // Routes
+    // Basic Landing Page Route
     app.get('/', (req, res) => {
         res.render('index', { user: req.user });
     });
 
-    // Add your other routes here (auth, dashboard, etc.)
-    // app.use('/auth', require('./routes/auth'));
-    // app.use('/dashboard', require('./routes/dashboard'));
-
-    // RENDER FIX: Must listen on '0.0.0.0' to be detected by Render's proxy
+    // RENDER FIX: Listen on 0.0.0.0
     app.listen(PORT, '0.0.0.0', () => {
-        console.log(`🌐 Dashboard is live and listening on port ${PORT}`);
+        console.log(`🌐 Dashboard is live on port ${PORT}`);
     });
 };
 
