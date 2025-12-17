@@ -1,59 +1,50 @@
-const { EmbedBuilder } = require('discord.js');
+const { AttachmentBuilder } = require('discord.js');
+const { createCanvas, loadImage } = require('canvas');
 const { getUserLevel } = require('../../utils/database');
 const { getXpProgress } = require('../../utils/xpCalculator');
 
 module.exports = {
     data: {
         name: 'level',
-        description: 'Check your current level and XP progress.',
-        aliases: ['lvl', 'rank'],
-        usage: '[,level [@user]]'
+        description: 'Check your current level with a visual Rank Card.',
+        aliases: ['rank', 'lvl']
     },
-    /**
-     * @param {Message} message 
-     * @param {string[]} args 
-     * @param {Client} client 
-     * @param {Object} config - Passed from messageCreate.js
-     */
     async execute(message, args, client, config) {
-        // 1. Determine target user (self or mentioned user)
         const targetMember = message.mentions.members.first() || message.member;
-        
-        try {
-            // 2. Fetch data from DB
-            const userLevel = await getUserLevel(targetMember.id, message.guild.id);
-            
-            // 3. Calculate progress using your XP formula
-            const progressData = getXpProgress(userLevel.xp, userLevel.level);
-            
-            // 4. Create a simple text-based progress bar
-            const progress = progressData.progress; // 0-100
-            const totalBars = 10;
-            const filledBars = Math.floor(progress / totalBars);
-            const emptyBars = totalBars - filledBars;
-            const progressBar = '🟦'.repeat(filledBars) + '⬜'.repeat(emptyBars);
+        const userLevel = await getUserLevel(targetMember.id, message.guild.id);
+        const progressData = getXpProgress(userLevel.xp, userLevel.level);
 
-            // 5. Build the embed
-            const embed = new EmbedBuilder()
-                .setAuthor({ 
-                    name: targetMember.user.username, 
-                    iconURL: targetMember.user.displayAvatarURL({ dynamic: true }) 
-                })
-                .setTitle('📊 Level Progress')
-                .setColor(config.embedColor || '#6366f1') // Safe fallback
-                .addFields(
-                    { name: 'Level', value: `\`${userLevel.level}\``, inline: true },
-                    { name: 'Total XP', value: `\`${userLevel.xp.toLocaleString()}\``, inline: true },
-                    { name: 'Progress', value: `${progressBar} **${progress}%**\n\`${progressData.currentLevelXp.toLocaleString()} / ${progressData.requiredXp.toLocaleString()} XP\`` }
-                )
-                .setFooter({ text: `Server: ${message.guild.name}` })
-                .setTimestamp();
+        // Canvas Setup
+        const canvas = createCanvas(800, 200);
+        const ctx = canvas.getContext('2d');
 
-            return message.reply({ embeds: [embed] });
+        // Background
+        ctx.fillStyle = '#2c2f33';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        } catch (error) {
-            console.error(`Error in level command:`, error);
-            message.reply('❌ An error occurred while fetching level data.');
-        }
+        // Progress Bar Background
+        ctx.fillStyle = '#484b4e';
+        ctx.fillRect(220, 130, 500, 30);
+
+        // Progress Bar Fill
+        ctx.fillStyle = config.embedColor || '#6366f1';
+        const fillWidth = (progressData.progress / 100) * 500;
+        ctx.fillRect(220, 130, fillWidth, 30);
+
+        // Text: Username & Level
+        ctx.font = 'bold 35px sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(targetMember.user.username, 220, 70);
+
+        ctx.font = '25px sans-serif';
+        ctx.fillText(`Level: ${userLevel.level}`, 220, 110);
+        ctx.fillText(`${progressData.progress}%`, 660, 110);
+
+        // Avatar
+        const avatar = await loadImage(targetMember.user.displayAvatarURL({ extension: 'png' }));
+        ctx.drawImage(avatar, 30, 30, 140, 140);
+
+        const attachment = new AttachmentBuilder(canvas.toBuffer(), { name: 'rank.png' });
+        return message.reply({ files: [attachment] });
     }
 };
