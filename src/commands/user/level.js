@@ -1,50 +1,98 @@
-const { AttachmentBuilder } = require('discord.js');
-const { createCanvas, loadImage } = require('canvas');
-const { getUserLevel } = require('../../utils/database');
-const { getXpProgress } = require('../../utils/xpCalculator');
+const { getGuildConfig, getUserLevel } = require('../utils/database');
+const { calculateLevel } = require('../utils/xpCalculator');
+const LevelingManager = require('../utils/LevelingManager');
 
 module.exports = {
-    data: {
-        name: 'level',
-        description: 'Check your current level with a visual Rank Card.',
-        aliases: ['rank', 'lvl']
+    name: 'messageCreate',
+    /**
+     * @param {Message} message 
+     * @param {Client} client 
+     */
+    async execute(message, client) {
+        // Ignore bots and DM messages
+        if (message.author.bot || !message.guild) return;
+
+        // 1. Fetch Server Configuration
+        const config = await getGuildConfig(message.guild.id);
+        const prefix = config.prefix || ',';
+
+        // --- 1. HANDLE COMMANDS ---
+        if (message.content.startsWith(prefix)) {
+            const args = message.content.slice(prefix.length).trim().split(/ +/);
+            const commandName = args.shift().toLowerCase();
+            const command = client.commands.get(commandName);
+
+            if (command) {
+                try {
+                    // Check if command is admin-only
+                    if (command.data.adminOnly && !message.member.permissions.has('Administrator')) {
+                        return message.reply('❌ This command is for Administrators only.');
+                    }
+                    
+                    // FIXED: Pass 'config' as the 4th argument to prevent Embed errors
+                    return await command.execute(message, args, client, config);
+                } catch (error) {
+                    console.error(`Error executing command ${commandName}:`, error);
+                    return message.reply('❌ There was an error executing that command.');
+                }
+            }
+        }
+
+        // --- 2. XP SYSTEM LOGIC ---
+        if (!config.levelingEnabled) return;
+
+        // Safety check for blacklists
+        const blacklistedChannels = config.blacklistedChannels || [];
+        const blacklistedRoles = config.blacklistedRoles || [];
+
+        if (blacklistedChannels.includes(message.channel.id)) return;
+
+        const hasBlacklistedRole = message.member.roles.cache.some(role => 
+            blacklistedRoles.includes(role.id)
+        );
+        if (hasBlacklistedRole) return;
+
+        try {
+            const userLevel = await getUserLevel(message.author.id, message.guild.id);
+            const now = Date.now();
+            const cooldown = 60000; // 1 minute
+
+            // Use .getTime() safely or default to 0
+            const lastMsgTime = userLevel.lastMessage ? new Date(userLevel.lastMessage).getTime() : 0;
+            
+            if (now - lastMsgTime > cooldown) {
+                
+                let multiplier = config.xpRate || 1.0;
+
+                // Nitro Booster Bonus (1.5x)
+                if (message.member.premiumSince) {
+                    multiplier *= 1.5;
+                }
+
+                const xpToAdd = Math.floor((Math.random() * 11 + 15) * multiplier);
+                
+                const oldLevel = userLevel.level;
+                userLevel.xp += xpToAdd;
+                userLevel.lastMessage = now; // Store as timestamp for easier math next time
+
+                // Check for Level Up using the standardized formula
+                const newLevel = calculateLevel(userLevel.xp);
+
+                if (newLevel > oldLevel) {
+                    userLevel.level = newLevel;
+                    
+                    // Save level FIRST so the image reflects the new level accurately
+                    await userLevel.save();
+
+                    // Trigger the LevelingManager (Visual card + Roles)
+                    await LevelingManager.handleLevelUp(message.member, newLevel, config);
+                } else {
+                    // Just save the XP gain
+                    await userLevel.save();
+                }
+            }
+        } catch (error) {
+            console.error('Error in XP processing:', error);
+        }
     },
-    async execute(message, args, client, config) {
-        const targetMember = message.mentions.members.first() || message.member;
-        const userLevel = await getUserLevel(targetMember.id, message.guild.id);
-        const progressData = getXpProgress(userLevel.xp, userLevel.level);
-
-        // Canvas Setup
-        const canvas = createCanvas(800, 200);
-        const ctx = canvas.getContext('2d');
-
-        // Background
-        ctx.fillStyle = '#2c2f33';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Progress Bar Background
-        ctx.fillStyle = '#484b4e';
-        ctx.fillRect(220, 130, 500, 30);
-
-        // Progress Bar Fill
-        ctx.fillStyle = config.embedColor || '#6366f1';
-        const fillWidth = (progressData.progress / 100) * 500;
-        ctx.fillRect(220, 130, fillWidth, 30);
-
-        // Text: Username & Level
-        ctx.font = 'bold 35px sans-serif';
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(targetMember.user.username, 220, 70);
-
-        ctx.font = '25px sans-serif';
-        ctx.fillText(`Level: ${userLevel.level}`, 220, 110);
-        ctx.fillText(`${progressData.progress}%`, 660, 110);
-
-        // Avatar
-        const avatar = await loadImage(targetMember.user.displayAvatarURL({ extension: 'png' }));
-        ctx.drawImage(avatar, 30, 30, 140, 140);
-
-        const attachment = new AttachmentBuilder(canvas.toBuffer(), { name: 'rank.png' });
-        return message.reply({ files: [attachment] });
-    }
 };
