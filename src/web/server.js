@@ -7,19 +7,17 @@ require('../config/passport-setup');
 
 const startDashboard = (client) => {
     const app = express();
-    
-    // Allow routes to access the Discord Client
     app.set('discordClient', client);
+
+    // FIX: These two lines prevent 500 errors on POST requests
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
 
     app.set('view engine', 'ejs');
     app.set('views', path.join(__dirname, 'views'));
     
-    // CRITICAL: Allows reading data from forms/buttons
-    app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
-
     app.use(session({
-        secret: process.env.SESSION_SECRET || 'dark-mode-secret',
+        secret: process.env.SESSION_SECRET || 'super-secret-key',
         resave: false,
         saveUninitialized: false
     }));
@@ -27,15 +25,13 @@ const startDashboard = (client) => {
     app.use(passport.initialize());
     app.use(passport.session());
 
-    // Routes
     app.use('/auth', require('./routes/auth'));
     app.use('/dashboard', require('./routes/dashboard'));
 
     app.get('/', (req, res) => res.render('index', { user: req.user }));
 
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`🌐 Dashboard live on port ${PORT}`);
+    app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+        console.log(`🌐 Dashboard Online`);
     });
 };
 
