@@ -7,7 +7,7 @@ function isAuthenticated(req, res, next) {
     res.redirect('/auth/discord');
 }
 
-// 1. Dashboard Main List
+// 1. Dashboard Main List (GET)
 router.get('/', isAuthenticated, (req, res) => {
     const client = req.app.get('discordClient');
     const guilds = req.user.guilds.filter(g => {
@@ -20,41 +20,51 @@ router.get('/', isAuthenticated, (req, res) => {
     res.render('dashboard', { user: req.user, guilds });
 });
 
-// 2. Server Configuration Page (FIXED)
+// 2. Server Configuration Page (GET)
 router.get('/:guildId', isAuthenticated, async (req, res) => {
     try {
         const client = req.app.get('discordClient');
         const guild = client.guilds.cache.get(req.params.guildId);
-
         if (!guild) return res.status(404).send("Bot not in server.");
 
         const config = await getGuildConfig(req.params.guildId);
-
-        // Map role IDs to actual Discord role objects for the UI
         const roleRewards = (config.roleRewards || [])
-            .map(r => ({
-                level: r.level,
-                role: guild.roles.cache.get(r.roleId)
-            }))
-            .filter(r => r.role) // Clean out deleted roles
+            .map(r => ({ level: r.level, role: guild.roles.cache.get(r.roleId) }))
+            .filter(r => r.role)
             .sort((a, b) => a.level - b.level);
 
-        // Fetch text channels for the "Level Up Message" channel dropdown
-        const channels = guild.channels.cache
-            .filter(c => c.type === 0)
-            .map(c => ({ id: c.id, name: c.name }));
-
-        res.render('guildConfig', { 
-            user: req.user, 
-            guild, 
-            config, 
-            roleRewards, // FIXED: Now explicitly defined
-            channels 
-        });
-
+        res.render('guildConfig', { user: req.user, guild, config, roleRewards });
     } catch (err) {
-        console.error("Dashboard Render Error:", err);
-        res.status(500).send("Internal Server Error");
+        res.status(500).send("Internal Error");
+    }
+});
+
+// 3. Update Settings Handler (POST) - FULL FIXED
+router.post('/:guildId/update', isAuthenticated, async (req, res) => {
+    try {
+        const { guildId } = req.params;
+        const client = req.app.get('discordClient');
+
+        // Security: Verify Admin perms again
+        const userGuild = req.user.guilds.find(g => g.id === guildId);
+        const perms = new PermissionsBitField(BigInt(userGuild.permissions));
+        if (!perms.has(PermissionsBitField.Flags.Administrator)) return res.status(403).send("Forbidden");
+
+        const config = await getGuildConfig(guildId);
+        
+        // Update values from the form body
+        if (req.body.prefix) config.prefix = req.body.prefix.substring(0, 5);
+        
+        // HTML checkboxes only exist in req.body if checked
+        config.levelingEnabled = req.body.levelingEnabled === 'on';
+
+        await config.save();
+        
+        // Redirect back to page with a success flag
+        res.redirect(`/dashboard/${guildId}?success=true`);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Failed to save settings.");
     }
 });
 
