@@ -12,6 +12,7 @@ module.exports = {
         // Ignore bots and DM messages
         if (message.author.bot || !message.guild) return;
 
+        // 1. Fetch Server Configuration
         const config = await getGuildConfig(message.guild.id);
         const prefix = config.prefix || ',';
 
@@ -27,7 +28,9 @@ module.exports = {
                     if (command.data.adminOnly && !message.member.permissions.has('Administrator')) {
                         return message.reply('❌ This command is for Administrators only.');
                     }
-                    return await command.execute(message, args, client);
+                    
+                    // FIXED: Pass 'config' as the 4th argument to prevent Embed errors
+                    return await command.execute(message, args, client, config);
                 } catch (error) {
                     console.error(`Error executing command ${commandName}:`, error);
                     return message.reply('❌ There was an error executing that command.');
@@ -38,12 +41,16 @@ module.exports = {
         // --- 2. XP SYSTEM LOGIC ---
         if (!config.levelingEnabled) return;
 
+        // Safety check for blacklists (ensure they are arrays)
+        const blacklistedChannels = config.blacklistedChannels || [];
+        const blacklistedRoles = config.blacklistedRoles || [];
+
         // Check if channel is blacklisted
-        if (config.blacklistedChannels.includes(message.channel.id)) return;
+        if (blacklistedChannels.includes(message.channel.id)) return;
 
         // Check if user has a blacklisted role
         const hasBlacklistedRole = message.member.roles.cache.some(role => 
-            config.blacklistedRoles.includes(role.id)
+            blacklistedRoles.includes(role.id)
         );
         if (hasBlacklistedRole) return;
 
@@ -53,7 +60,9 @@ module.exports = {
             const cooldown = 60000; // 1 minute cooldown between XP gains
 
             // Only give XP if cooldown has passed
-            if (now - userLevel.lastMessage.getTime() > cooldown) {
+            const lastMsgTime = userLevel.lastMessage ? userLevel.lastMessage.getTime() : 0;
+            
+            if (now - lastMsgTime > cooldown) {
                 
                 // Calculate Multipliers
                 let multiplier = config.xpRate || 1.0;
@@ -61,12 +70,6 @@ module.exports = {
                 // Nitro Booster Bonus (1.5x)
                 if (message.member.premiumSince) {
                     multiplier *= 1.5;
-                }
-
-                // VIP/Staff Role Bonus (1.2x) - Replace with your actual Role ID or load from config
-                const vipRoleId = 'YOUR_VIP_ROLE_ID_HERE'; 
-                if (message.member.roles.cache.has(vipRoleId)) {
-                    multiplier *= 1.2;
                 }
 
                 // Random XP between 15-25, multiplied by rate
