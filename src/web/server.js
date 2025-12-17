@@ -3,21 +3,19 @@ const session = require('express-session');
 const passport = require('passport');
 const path = require('path');
 
-require('../config/passport-setup');
-
 const startDashboard = (client) => {
     const app = express();
     app.set('discordClient', client);
 
-    // FIX: These two lines prevent 500 errors on POST requests
+    // --- CRITICAL DATA PARSERS ---
     app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
+    app.use(express.urlencoded({ extended: true })); 
 
     app.set('view engine', 'ejs');
     app.set('views', path.join(__dirname, 'views'));
     
     app.use(session({
-        secret: process.env.SESSION_SECRET || 'super-secret-key',
+        secret: process.env.SESSION_SECRET || 'secret-key',
         resave: false,
         saveUninitialized: false
     }));
