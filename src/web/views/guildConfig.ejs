@@ -2,69 +2,100 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title><%= guild.name %> Configuration</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <script src="/js/config.js" defer></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= guild.name %> | Configuration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; }
+        .glass-card { background: rgba(30, 41, 59, 0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
+        .input-field { background: #1e293b; border: 1px solid #334155; color: #f1f5f9; outline: none; transition: all 0.2s; }
+        .input-field:focus { border-color: #6366f1; ring: 2px ring-indigo-500; }
+    </style>
 </head>
-<body>
-    <header>
-        <nav>
-            <h1><a href="/dashboard">← Back to Guilds</a></h1>
-            <span>Configuring: **<%= guild.name %>**</span>
-            <a href="/auth/logout">Logout</a>
+<body class="text-slate-200 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <nav class="mb-8">
+            <a href="/dashboard" class="text-indigo-400 hover:text-indigo-300 flex items-center gap-2 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Back to Servers
+            </a>
         </nav>
-    </header>
 
-    <main>
-        <h2>Settings for <%= guild.name %></h2>
-        
-        <section class="config-section">
-            <h3>General Settings</h3>
-            <form id="general-config-form" data-guild-id="<%= guild.id %>">
-                <label>
-                    Leveling System:
-                    <select name="levelingEnabled">
-                        <option value="true" <%= config.levelingEnabled ? 'selected' : '' %>>Enabled</option>
-                        <option value="false" <%= !config.levelingEnabled ? 'selected' : '' %>>Disabled</option>
-                    </select>
-                </label>
-                
-                <label>
-                    XP Multiplier Rate:
-                    <input type="number" step="0.1" min="0.1" name="xpRate" value="<%= config.xpRate %>">
-                </label>
-                
-                <label>
-                    Command Prefix:
-                    <input type="text" name="prefix" value="<%= config.prefix %>" maxlength="5">
-                </label>
-                <button type="submit">Save General Settings</button>
-            </form>
-            <p id="general-status"></p>
-        </section>
-
-        <section class="config-section">
-            <h3>Role Rewards (<%= roleRewards.length %>)</h3>
-            <% if (roleRewards.length > 0) { %>
-                <ul>
-                    <% roleRewards.forEach(reward => { %>
-                        <li>Level <%= reward.level %>: **<%= reward.role.name %>**</li>
-                    <% }); %>
-                </ul>
+        <header class="flex flex-col md:flex-row items-center gap-6 mb-10 pb-10 border-b border-slate-800">
+            <% if (guild.icon) { %>
+                <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" class="w-24 h-24 rounded-3xl shadow-2xl border-2 border-slate-700">
             <% } else { %>
-                <p>No role rewards configured. Use the command: <code><%= config.prefix %>addreward 10 @Role</code></p>
+                <div class="w-24 h-24 bg-indigo-600 rounded-3xl flex items-center justify-center text-3xl font-bold shadow-2xl">
+                    <%= guild.name.charAt(0) %>
+                </div>
             <% } %>
-        </section>
+            <div class="text-center md:text-left">
+                <h1 class="text-4xl font-black text-white"><%= guild.name %></h1>
+                <p class="text-slate-400 font-mono text-sm mt-1">ID: <%= guild.id %></p>
+            </div>
+        </header>
 
-        <section class="config-section">
-            <h3>Blacklisted Channels (<%= blacklistedChannels.length %>)</h3>
-            <p><%= blacklistedChannels.map(c => c.name).join(', ') || 'None' %></p>
+        <form action="/dashboard/<%= guild.id %>/update" method="POST" class="space-y-8">
             
-            <h3>Blacklisted Roles (<%= blacklistedRoles.length %>)</h3>
-            <p><%= blacklistedRoles.map(r => r.name).join(', ') || 'None' %></p>
-            <p class="note">Blacklists must be managed via bot commands (e.g., <code><%= config.prefix %>blacklistchannel #channel</code>)</p>
-        </section>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="glass-card p-6 rounded-2xl">
+                    <label class="block text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Command Prefix</label>
+                    <input type="text" name="prefix" value="<%= config.prefix %>" maxlength="5" class="input-field w-full px-4 py-3 rounded-xl font-mono text-xl">
+                    <p class="text-xs text-slate-500 mt-2">Example: !, ?, or >> </p>
+                </div>
 
-    </main>
+                <div class="glass-card p-6 rounded-2xl flex items-center justify-between">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Leveling System</label>
+                        <p class="text-xs text-slate-500">Enable or disable all XP gain</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" name="levelingEnabled" class="sr-only peer" <%= config.levelingEnabled ? 'checked' : '' %>>
+                        <div class="w-14 h-7 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="glass-card p-8 rounded-3xl">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-bold text-white">Role Rewards</h2>
+                    <span class="bg-indigo-500/10 text-indigo-400 px-3 py-1 rounded-full text-sm font-bold border border-indigo-500/20">
+                        <%= roleRewards.length %> Rewards
+                    </span>
+                </div>
+
+                <% if (roleRewards && roleRewards.length > 0) { %>
+                    <div class="space-y-3">
+                        <% roleRewards.forEach(reward => { %>
+                            <div class="flex items-center justify-between bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 hover:border-slate-600 transition">
+                                <div class="flex items-center gap-4">
+                                    <div class="bg-indigo-600 text-white w-10 h-10 rounded-lg flex items-center justify-center font-bold">
+                                        Lvl <%= reward.level %>
+                                    </div>
+                                    <span class="font-bold text-slate-200">@<%= reward.role.name %></span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <div class="w-3 h-3 rounded-full" style="background-color: <%= reward.role.hexColor %>"></div>
+                                </div>
+                            </div>
+                        <% }) %>
+                    </div>
+                <% } else { %>
+                    <div class="text-center py-10 bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-800">
+                        <p class="text-slate-500">No role rewards configured for this server.</p>
+                    </div>
+                <% } %>
+                <p class="text-xs text-slate-500 mt-4 italic text-center">Use the /add-reward command in Discord to add more.</p>
+            </div>
+
+            <div class="sticky bottom-8">
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-5 rounded-2xl shadow-2xl shadow-indigo-500/30 transition transform active:scale-95 text-xl uppercase tracking-widest">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+
 </body>
 </html>
