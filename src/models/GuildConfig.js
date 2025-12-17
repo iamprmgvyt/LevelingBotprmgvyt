@@ -1,28 +1,15 @@
-const { Schema, model } = require('mongoose');
+const mongoose = require('mongoose');
 
-// The fix is here: 'new Schema' instead of 'new new Schema'
-const GuildConfigSchema = new Schema({
+const GuildConfigSchema = new mongoose.Schema({
     guildId: { type: String, required: true, unique: true },
+    prefix: { type: String, default: '!' },
     levelingEnabled: { type: Boolean, default: true },
-    xpRate: { type: Number, default: 1.0 },
-    levelChannelId: { type: String, default: null }, // Channel for level-up announcements
-    embedColor: { type: String, default: '#0099ff' },
-    prefix: { type: String, default: ',' },
-
-    // XP Blacklists
-    blacklistedChannels: { type: [String], default: [] },
-    blacklistedRoles: { type: [String], default: [] },
-
-    // Role Rewards: [{ level: 5, roleId: '12345...' }]
-    roleRewards: { 
-        type: [
-            {
-                level: { type: Number, required: true },
-                roleId: { type: String, required: true }
-            }
-        ], 
-        default: [] 
-    },
+    levelUpChannel: { type: String, default: null },
+    // Ensure this is an array so .length works in EJS
+    roleRewards: [{
+        level: Number,
+        roleId: String
+    }]
 });
 
-module.exports = model('GuildConfig', GuildConfigSchema);
+module.exports = mongoose.model('GuildConfig', GuildConfigSchema);
