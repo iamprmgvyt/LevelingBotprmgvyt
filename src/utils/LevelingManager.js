@@ -4,11 +4,7 @@ const UserLevel = require('../models/UserLevel');
 const { createCanvas, loadImage } = require('canvas');
 
 /**
- * --- Level Up Image Generation ---
- * Generates a simple level-up image banner using the 'canvas' library.
- * @param {GuildMember} member - The member who leveled up.
- * @param {number} newLevel - The new level.
- * @returns {Promise<AttachmentBuilder>} A promise that resolves to the Discord AttachmentBuilder.
+ * Generates a high-quality level-up image banner.
  */
 async function generateLevelUpImage(member, newLevel) {
     const width = 700;
@@ -16,159 +12,123 @@ async function generateLevelUpImage(member, newLevel) {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // 1. Background (Dark color for contrast)
+    // 1. Background
     ctx.fillStyle = '#1e2025';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Load and Draw Avatar
+    // 2. Avatar Drawing Logic
     try {
-        const avatar = await loadImage(member.user.displayAvatarURL({ extension: 'png', size: 128 }));
+        const avatarURL = member.user.displayAvatarURL({ extension: 'png', size: 256 });
+        const avatar = await loadImage(avatarURL);
         
-        // Draw rounded avatar circle
+        ctx.save(); // Save state for clipping
         ctx.beginPath();
         ctx.arc(100, 125, 75, 0, Math.PI * 2, true);
         ctx.closePath();
         ctx.clip();
         ctx.drawImage(avatar, 25, 50, 150, 150);
-        
-        // Reset clipping
-        canvas.width = width; 
+        ctx.restore(); // Restore to remove clipping for text
     } catch (e) {
-        console.error("Could not load user avatar for canvas:", e);
+        console.error("Canvas Avatar Load Error:", e);
     }
 
-    // 3. Draw Text
+    // 3. Text & Styling
     ctx.fillStyle = '#ffffff';
-    
-    // Level Up Title
     ctx.font = 'bold 50px sans-serif';
     ctx.fillText('LEVEL UP!', 200, 90);
 
-    // Level Number
     ctx.font = '40px sans-serif';
-    ctx.fillStyle = '#2ecc71'; // Green color for level
+    ctx.fillStyle = '#2ecc71'; 
     ctx.fillText(`Reached Level ${newLevel}`, 200, 150);
 
-    // User Tag
     ctx.font = '25px sans-serif';
     ctx.fillStyle = '#aaaaaa';
     ctx.fillText(member.user.tag, 200, 185);
 
-    // 4. Return as Attachment
-    const attachment = new AttachmentBuilder(canvas.toBuffer(), { name: 'level-up.png' });
-    return attachment;
+    return new AttachmentBuilder(canvas.toBuffer(), { name: 'level-up.png' });
 }
-// ----------------------------------------------------
 
-
-/**
- * Handles all level-up related database and Discord actions: 
- * announcements, role rewards, and user resets.
- */
 class LevelingManager {
-
     /**
-     * Announces the level up in the configured channel, including a custom image and emojis.
-     * @param {GuildMember} member - The member who leveled up.
-     * @param {number} newLevel - The new level.
-     * @param {object} config - The guild configuration object.
+     * Main entry point for leveling actions
      */
-    static async handleLevelUpAnnouncement(member, newLevel, config) {
-        if (!config.levelupChannelId) return;
+    static async handleLevelUp(member, newLevel, config) {
+        await this.handleLevelUpAnnouncement(member, newLevel, config);
+        await this.handleRoleRewards(member, newLevel, config);
+    }
 
-        const channel = member.guild.channels.cache.get(config.levelupChannelId);
+    static async handleLevelUpAnnouncement(member, newLevel, config) {
+        if (!config.levelChannelId) return;
+
+        const channel = member.guild.channels.cache.get(config.levelChannelId);
         if (!channel) return;
 
-        // Generate the custom level-up image attachment
         const attachment = await generateLevelUpImage(member, newLevel);
+        const xpForNextLevel = totalXpRequiredForLevel(newLevel + 1);
         
-        const messageContent = config.levelupMessage
+        const messageContent = (config.levelMessage || 'GG {user}, you reached **Level {level}**!')
             .replace('{user}', member.toString())
             .replace('{level}', newLevel);
 
-        // --- UPDATED: Embed with Emojis ---
-        const xpForNextLevel = totalXpRequiredForLevel(newLevel);
-        
         const embed = new EmbedBuilder()
-            .setColor(config.embedColor)
+            .setColor(config.embedColor || '#0099ff')
             .setTitle('🌟 Level Up Success! 🥳')
-            .setDescription(`**${messageContent}**\n\n🎉 You've unlocked new potential! Check your rank with \`,rank\`.`)
-            .setThumbnail(member.user.displayAvatarURL({ dynamic: true })) // Keep a small thumbnail too
-            .setImage('attachment://level-up.png') // Reference the attached image
+            .setDescription(`**${messageContent}**\n\n🎉 You've unlocked new potential!`)
+            .setImage('attachment://level-up.png')
             .addFields({
                 name: '📈 Next Challenge',
-                value: `Reach **${xpForNextLevel} total XP** to hit **Level ${newLevel + 1}**!`,
+                value: `Reach **Level ${newLevel + 1}** at **${xpForNextLevel} total XP**!`,
                 inline: true
             })
-            .setFooter({ 
-                text: `Bot by Gemini | Rank Up!`, 
-                iconURL: member.guild.iconURL({ dynamic: true }) 
-            })
+            .setFooter({ text: `Server Leveling System`, iconURL: member.guild.iconURL() })
             .setTimestamp();
-        // ----------------------------------
 
         try {
             await channel.send({ 
                 content: member.toString(), 
-                embeds: [embed],
-                files: [attachment] // Send the image file
+                embeds: [embed], 
+                files: [attachment] 
             });
         } catch (error) {
-            console.error(`Error sending level-up message in guild ${member.guild.id}:`, error);
+            console.error("Announcement Error:", error);
         }
     }
 
-    /**
-     * Manages giving and removing level-up role rewards based on guild configuration.
-     * @param {GuildMember} member - The member who leveled up.
-     * @param {number} newLevel - The new level.
-     * @param {object} config - The guild configuration object.
-     */
     static async handleRoleRewards(member, newLevel, config) {
         if (!config.roleRewards || config.roleRewards.length === 0) return;
 
-        const newReward = config.roleRewards.find(r => r.level === newLevel);
+        const rewards = [...config.roleRewards].sort((a, b) => b.level - a.level);
+        const currentReward = rewards.find(r => r.level === newLevel);
 
-        if (newReward) {
-            const role = member.guild.roles.cache.get(newReward.roleId);
-            if (role) {
+        if (currentReward) {
+            const roleToAdd = member.guild.roles.cache.get(currentReward.roleId);
+            if (roleToAdd) {
                 try {
-                    // Find and remove previous reward roles (levels < newLevel)
-                    const previousRewards = config.roleRewards.filter(r => r.level < newLevel);
-                    const rolesToRemove = previousRewards
-                        .map(r => r.roleId)
-                        .filter(id => member.roles.cache.has(id));
-                    
-                    if (rolesToRemove.length > 0) {
-                        // Ensure the bot has permissions and the role is not higher than the bot's highest role
-                        await member.roles.remove(rolesToRemove, `Level up to ${newLevel} - removing previous level roles.`);
+                    // Remove old rewards first (Role Removal Logic)
+                    const oldRewards = rewards.filter(r => r.level < newLevel);
+                    for (const old of oldRewards) {
+                        if (member.roles.cache.has(old.roleId)) {
+                            await member.roles.remove(old.roleId, 'Removing lower level reward.');
+                        }
                     }
-
-                    // Add the new reward role
-                    if (!member.roles.cache.has(role.id)) {
-                        await member.roles.add(role, `Level up to ${newLevel}`);
-                    }
-                } catch (error) {
-                    console.error(`Error managing level role rewards for ${member.user.tag}:`, error);
+                    // Add new reward
+                    await member.roles.add(roleToAdd, `Reached Level ${newLevel}`);
+                } catch (err) {
+                    console.error("Role Reward Error:", err);
                 }
             }
         }
     }
 
-    /**
-     * Resets a user's XP and Level in the database.
-     * @param {string} userId - The user's ID.
-     * @param {string} guildId - The guild's ID.
-     */
     static async resetUserLevel(userId, guildId) {
-        const userLevel = await UserLevel.findOne({ userId, guildId });
-        if (userLevel) {
-            userLevel.level = 0;
-            userLevel.xp = 0;
-            userLevel.lastMessage = new Date(0); // Reset cooldown
-            await userLevel.save();
-        }
+        await UserLevel.findOneAndUpdate(
+            { userId, guildId },
+            { xp: 0, level: 0, lastDaily: null },
+            { upsert: true }
+        );
     }
 }
+
+module.exports = LevelingManager;
 
 module.exports = LevelingManager;
