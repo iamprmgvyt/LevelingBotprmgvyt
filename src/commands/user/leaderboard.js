@@ -1,115 +1,183 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
-const UserLevel = require('../../models/UserLevel');
-const { getGuildConfig } = require('../../utils/database');
+/**
+ * ==========================================
+ * COMMAND: leaderboard
+ * DESCRIPTION: Interactive paginated server leaderboard.
+ * FEATURES: User fetching, Rank Emojis, "Your Rank" highlight.
+ * ==========================================
+ */
 
+const { 
+    EmbedBuilder, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle, 
+    ComponentType 
+} = require('discord.js');
+const UserLevel = require('../../models/UserLevel');
+const { getGuildConfig, getUserLevel } = require('../../utils/database');
+
+// Configuration Constants
 const ITEMS_PER_PAGE = 10;
-const MAX_FETCH = 100; // Limit the database fetch for performance
+const MAX_FETCH = 100; // Limit for performance
 
 module.exports = {
     data: {
         name: 'leaderboard',
-        aliases: ['lb'],
-        description: 'Shows the top 10 users in the server by level and XP.',
+        aliases: ['lb', 'top', 'levels'],
+        description: 'Shows the top users in the server by level and XP.',
         usage: '[,leaderboard]',
         adminOnly: false
     },
+
     /**
-     * Executes the leaderboard command with interactive pagination.
-     * @param {Message} message - The Discord message object.
-     * @param {string[]} args - Command arguments.
-     * @param {Client} client - The Discord client.
+     * @param {Message} message 
+     * @param {string[]} args 
+     * @param {Client} client 
+     * @param {Object} config
      */
-    async execute(message, args, client) {
+    async execute(message, args, client, config) {
         const guildId = message.guild.id;
-        const config = await getGuildConfig(guildId);
 
-        // Fetch top users for this guild, sorted by level (desc) then xp (desc)
-        const topUsers = await UserLevel.find({ guildId })
-            .sort({ level: -1, xp: -1 }) // Sort: highest level first, then highest XP
-            .limit(MAX_FETCH);
+        try {
+            // 1. DATA FETCHING
+            // We fetch the top 100 users to allow pagination
+            const topUsers = await UserLevel.find({ guildId })
+                .sort({ level: -1, xp: -1 }) 
+                .limit(MAX_FETCH);
 
-        if (topUsers.length === 0) {
-            return message.reply('❌ The leaderboard is empty! Start chatting to gain XP.');
-        }
-
-        const maxPages = Math.ceil(topUsers.length / ITEMS_PER_PAGE);
-        let currentPage = 1;
-
-        // Function to dynamically generate the leaderboard embed for the current page
-        const generateEmbed = (page) => {
-            const start = (page - 1) * ITEMS_PER_PAGE;
-            const end = start + ITEMS_PER_PAGE;
-            const currentUsers = topUsers.slice(start, end);
-
-            const leaderboardText = currentUsers.map((user, index) => {
-                const rank = start + index + 1;
-                // Attempt to get the member's tag, defaulting if they've left
-                const member = message.guild.members.cache.get(user.userId);
-                const userTag = member ? member.user.tag : `[User Left - ID: ${user.userId}]`;
-                
-                const emoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '▪️';
-
-                return `${emoji} **#${rank}** - **${userTag}** (Lvl: ${user.level} | XP: ${user.xp})`;
-            }).join('\n');
-
-            return new EmbedBuilder()
-                .setColor(config.embedColor)
-                .setTitle(`🏆 ${message.guild.name} Server Leaderboard`)
-                .setDescription(leaderboardText || 'No users to display on this page.')
-                .setFooter({ text: `Page ${page}/${maxPages} | Use ,global-leaderboard for worldwide rank.` });
-        };
-
-        // Function to create the interactive pagination buttons
-        const createButtons = (page) => {
-            return new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('prev_lb')
-                    .setLabel('⬅️ Previous')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(page === 1),
-                new ButtonBuilder()
-                    .setCustomId('next_lb')
-                    .setLabel('Next ➡️')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(page === maxPages)
-            );
-        };
-
-        // Send initial message
-        const msg = await message.reply({ 
-            embeds: [generateEmbed(currentPage)], 
-            components: maxPages > 1 ? [createButtons(currentPage)] : [] // Only show buttons if multi-page
-        });
-
-        if (maxPages <= 1) return;
-
-        // Collector for handling button interactions
-        const filter = i => ['prev_lb', 'next_lb'].includes(i.customId) && i.user.id === message.author.id;
-        const collector = msg.createMessageComponentCollector({ 
-            filter, 
-            componentType: ComponentType.Button,
-            time: 60000 // 60 seconds timeout
-        });
-
-        collector.on('collect', async i => {
-            if (i.customId === 'prev_lb' && currentPage > 1) {
-                currentPage--;
-            } else if (i.customId === 'next_lb' && currentPage < maxPages) {
-                currentPage++;
+            if (!topUsers || topUsers.length === 0) {
+                return message.reply('❌ The leaderboard is currently empty. Start chatting to earn XP!');
             }
 
-            // Update the message with the new embed and button states
-            await i.update({
-                embeds: [generateEmbed(currentPage)],
-                components: [createButtons(currentPage)]
-            });
-        });
+            // 2. USER RANK FETCHING
+            // Find the message author's specific rank in the full list
+            const authorData = await UserLevel.findOne({ userId: message.author.id, guildId });
+            const allGuildUsers = await UserLevel.find({ guildId }).sort({ level: -1, xp: -1 });
+            const authorRank = allGuildUsers.findIndex(u => u.userId === message.author.id) + 1;
 
-        collector.on('end', () => {
-            // Disable buttons after the timeout
-            msg.edit({ 
-                components: maxPages > 1 ? [createButtons(currentPage).components.map(btn => btn.setDisabled(true))] : [] 
-            }).catch(() => {});
-        });
-    },
+            // 3. PAGINATION MATH
+            const maxPages = Math.ceil(topUsers.length / ITEMS_PER_PAGE);
+            let currentPage = 1;
+
+            // 4. EMBED GENERATION FUNCTION
+            const generateEmbed = async (page) => {
+                const start = (page - 1) * ITEMS_PER_PAGE;
+                const end = start + ITEMS_PER_PAGE;
+                const currentUsers = topUsers.slice(start, end);
+
+                // Build the list strings
+                const leaderboardEntries = await Promise.all(currentUsers.map(async (user, index) => {
+                    const rank = start + index + 1;
+                    
+                    // Fetch user from cache or API
+                    let userObj = client.users.cache.get(user.userId);
+                    if (!userObj) {
+                        try {
+                            userObj = await client.users.fetch(user.userId);
+                        } catch {
+                            userObj = null;
+                        }
+                    }
+
+                    const name = userObj ? userObj.username : `Unknown (${user.userId})`;
+                    
+                    // Rank Styling
+                    let medal = '▪️';
+                    if (rank === 1) medal = '🥇';
+                    else if (rank === 2) medal = '🥈';
+                    else if (rank === 3) medal = '🥉';
+
+                    return `${medal} **#${rank}** \`${name}\`\n╰ Level: **${user.level}** • XP: **${user.xp.toLocaleString()}**`;
+                }));
+
+                const description = leaderboardEntries.join('\n\n');
+
+                // CREATE THE EMBED
+                const embed = new EmbedBuilder()
+                    .setTitle(`🏆 ${message.guild.name} Leaderboard`)
+                    // --- CRITICAL FIX: The Fallback Color ---
+                    .setColor(config.embedColor || '#6366f1') 
+                    .setThumbnail(message.guild.iconURL({ dynamic: true }))
+                    .setDescription(description || 'No users found.')
+                    .setTimestamp();
+
+                // Add "Your Rank" if the user exists in the database
+                if (authorData) {
+                    embed.addFields({
+                        name: 'Your Position',
+                        value: `You are currently **#${authorRank}** with Level **${authorData.level}**`
+                    });
+                }
+
+                embed.setFooter({ 
+                    text: `Page ${page} of ${maxPages} • Total Players: ${topUsers.length}` 
+                });
+
+                return embed;
+            };
+
+            // 5. BUTTON GENERATION FUNCTION
+            const createButtons = (page) => {
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('lb_prev')
+                        .setLabel('Previous')
+                        .setEmoji('⬅️')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(page === 1),
+                    new ButtonBuilder()
+                        .setCustomId('lb_next')
+                        .setLabel('Next')
+                        .setEmoji('➡️')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(page === maxPages)
+                );
+                return row;
+            };
+
+            // 6. INITIAL SEND
+            const initialEmbed = await generateEmbed(currentPage);
+            const msg = await message.reply({
+                embeds: [initialEmbed],
+                components: maxPages > 1 ? [createButtons(currentPage)] : []
+            });
+
+            if (maxPages <= 1) return;
+
+            // 7. INTERACTION COLLECTOR
+            const collector = msg.createMessageComponentCollector({
+                filter: (i) => i.user.id === message.author.id,
+                componentType: ComponentType.Button,
+                time: 120000 // 2 minutes
+            });
+
+            collector.on('collect', async (interaction) => {
+                // Update page number
+                if (interaction.customId === 'lb_prev') {
+                    if (currentPage > 1) currentPage--;
+                } else if (interaction.customId === 'lb_next') {
+                    if (currentPage < maxPages) currentPage++;
+                }
+
+                // Edit the original message
+                const newEmbed = await generateEmbed(currentPage);
+                await interaction.update({
+                    embeds: [newEmbed],
+                    components: [createButtons(currentPage)]
+                });
+            });
+
+            collector.on('end', async () => {
+                // Disable buttons after timeout to prevent errors
+                const finalRow = createButtons(currentPage);
+                finalRow.components.forEach(btn => btn.setDisabled(true));
+                
+                await msg.edit({ components: [finalRow] }).catch(() => null);
+            });
+
+        } catch (error) {
+            console.error('LEADERBOARD_EXECUTION_ERROR:', error);
+            message.reply('❌ An error occurred while generating the leaderboard.');
+        }
+    }
 };
