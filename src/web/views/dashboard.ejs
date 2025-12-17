@@ -2,37 +2,40 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Select a Guild</title>
-    <link rel="stylesheet" href="/css/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Select Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { background-color: #0f172a; }</style>
 </head>
-<body>
-    <header>
-        <nav>
-            <h1><a href="/">Leveling Bot</a></h1>
-            <span>Logged in as <%= user.username %></span>
-            <a href="/auth/logout">Logout</a>
-        </nav>
-    </header>
+<body class="text-slate-200 p-8">
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-center mb-10">
+            <h1 class="text-3xl font-bold text-white">Select a Server</h1>
+            <a href="/" class="text-slate-400 hover:text-white transition">← Back Home</a>
+        </div>
 
-    <main>
-        <h2>Select a Server to Configure</h2>
-        <p>Showing servers where you have Administrator permissions.</p>
-
-        <div class="guild-list">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <% guilds.forEach(guild => { %>
-                <div class="guild-card <%= guild.inBot ? 'in-bot' : 'not-in-bot' %>">
-                    <img src="<%= guild.iconURL %>" alt="<%= guild.name %> icon" onerror="this.src='/images/default-icon.png';">
-                    <h3><%= guild.name %></h3>
-                    <% if (guild.inBot) { %>
-                        <p class="status success">Bot is in server</p>
-                        <a href="/dashboard/<%= guild.id %>" class="btn-manage">Manage Settings</a>
-                    <% } else { %>
-                        <p class="status warning">Bot not in server</p>
-                        <a href="<YOUR_BOT_INVITE_LINK>" target="_blank" class="btn-invite">Invite Bot</a>
-                    <% } %>
+                <div class="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl flex items-center justify-between hover:bg-slate-800 transition">
+                    <div class="flex items-center space-x-4">
+                        <% if (guild.icon) { %>
+                            <img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png" class="w-16 h-16 rounded-2xl shadow-lg">
+                        <% } else { %>
+                            <div class="w-16 h-16 bg-slate-700 rounded-2xl flex items-center justify-center font-bold text-xl">
+                                <%= guild.name.charAt(0) %>
+                            </div>
+                        <% } %>
+                        <div>
+                            <h3 class="font-bold text-lg text-white"><%= guild.name %></h3>
+                            <p class="text-slate-400 text-sm">Server ID: <%= guild.id %></p>
+                        </div>
+                    </div>
+                    <a href="/dashboard/<%= guild.id %>" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold transition">
+                        Edit
+                    </a>
                 </div>
             <% }); %>
         </div>
-    </main>
+    </div>
 </body>
 </html>
