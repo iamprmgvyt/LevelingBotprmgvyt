@@ -41,14 +41,12 @@ module.exports = {
         // --- 2. XP SYSTEM LOGIC ---
         if (!config.levelingEnabled) return;
 
-        // Safety check for blacklists (ensure they are arrays)
+        // Safety check for blacklists
         const blacklistedChannels = config.blacklistedChannels || [];
         const blacklistedRoles = config.blacklistedRoles || [];
 
-        // Check if channel is blacklisted
         if (blacklistedChannels.includes(message.channel.id)) return;
 
-        // Check if user has a blacklisted role
         const hasBlacklistedRole = message.member.roles.cache.some(role => 
             blacklistedRoles.includes(role.id)
         );
@@ -57,14 +55,13 @@ module.exports = {
         try {
             const userLevel = await getUserLevel(message.author.id, message.guild.id);
             const now = Date.now();
-            const cooldown = 60000; // 1 minute cooldown between XP gains
+            const cooldown = 60000; // 1 minute
 
-            // Only give XP if cooldown has passed
-            const lastMsgTime = userLevel.lastMessage ? userLevel.lastMessage.getTime() : 0;
+            // Use .getTime() safely or default to 0
+            const lastMsgTime = userLevel.lastMessage ? new Date(userLevel.lastMessage).getTime() : 0;
             
             if (now - lastMsgTime > cooldown) {
                 
-                // Calculate Multipliers
                 let multiplier = config.xpRate || 1.0;
 
                 // Nitro Booster Bonus (1.5x)
@@ -72,23 +69,27 @@ module.exports = {
                     multiplier *= 1.5;
                 }
 
-                // Random XP between 15-25, multiplied by rate
                 const xpToAdd = Math.floor((Math.random() * 11 + 15) * multiplier);
                 
                 const oldLevel = userLevel.level;
                 userLevel.xp += xpToAdd;
-                userLevel.lastMessage = new Date(now);
+                userLevel.lastMessage = now; // Store as timestamp for easier math next time
 
-                // Check for Level Up
+                // Check for Level Up using the standardized formula
                 const newLevel = calculateLevel(userLevel.xp);
 
                 if (newLevel > oldLevel) {
                     userLevel.level = newLevel;
-                    // Trigger the LevelingManager (Canvas Image + Role Rewards)
-                    await LevelingManager.handleLevelUp(message.member, newLevel, config);
-                }
+                    
+                    // Save level FIRST so the image reflects the new level accurately
+                    await userLevel.save();
 
-                await userLevel.save();
+                    // Trigger the LevelingManager (Visual card + Roles)
+                    await LevelingManager.handleLevelUp(message.member, newLevel, config);
+                } else {
+                    // Just save the XP gain
+                    await userLevel.save();
+                }
             }
         } catch (error) {
             console.error('Error in XP processing:', error);
