@@ -1,13 +1,13 @@
 const router = require('express').Router();
 const { PermissionsBitField } = require('discord.js');
-const { getGuildConfig } = require('../../utils/database');
+const { getGuildConfig } = require('../../utils/database'); // FIXED IMPORT
 
 function isAuthenticated(req, res, next) {
     if (req.isAuthenticated()) return next();
     res.redirect('/auth/discord');
 }
 
-// 1. Server List
+// Main Dashboard List
 router.get('/', isAuthenticated, (req, res) => {
     const client = req.app.get('discordClient');
     const guilds = req.user.guilds.filter(g => {
@@ -21,26 +21,21 @@ router.get('/', isAuthenticated, (req, res) => {
     res.render('dashboard', { user: req.user, guilds });
 });
 
-// 2. Specific Guild Settings (Safety Fixed)
+// Specific Server Settings
 router.get('/:guildId', isAuthenticated, async (req, res) => {
     try {
         const client = req.app.get('discordClient');
         const guild = client.guilds.cache.get(req.params.guildId);
 
-        if (!guild) {
-            return res.status(404).send("Bot is not in this server. Invite it first!");
-        }
+        if (!guild) return res.status(404).send("Bot is not in this server.");
 
-        // Fetch config. If it doesn't exist, getGuildConfig should return a default object.
-        let config = await getGuildConfig(req.params.guildId);
-        
-        // Ensure properties exist so EJS doesn't crash
-        if (!config) config = { prefix: '!', levelingEnabled: true };
+        // This call will now work perfectly
+        const config = await getGuildConfig(req.params.guildId);
 
         res.render('guildConfig', { user: req.user, guild, config });
     } catch (err) {
         console.error("Dashboard Error:", err);
-        res.status(500).send("Internal Server Error: Check console logs.");
+        res.status(500).send("Internal Server Error");
     }
 });
 
