@@ -5,16 +5,15 @@ const LevelingManager = require('../utils/LevelingManager');
 module.exports = {
     name: 'messageCreate',
     async execute(message, client) {
-        // 1. SYSTEM FILTERS
+        // 1. Filter out bots and DM messages
         if (message.author.bot || !message.guild) return;
 
+        // 2. Fetch Guild Configuration
         const config = await getGuildConfig(message.guild.id);
         const prefix = config.prefix || ',';
 
-        // 2. CHECK IF MESSAGE IS A COMMAND
-        const isCommand = message.content.startsWith(prefix);
-
-        if (isCommand) {
+        // --- SECTION A: COMMAND HANDLER ---
+        if (message.content.startsWith(prefix)) {
             const args = message.content.slice(prefix.length).trim().split(/ +/);
             const commandName = args.shift().toLowerCase();
             
@@ -23,45 +22,67 @@ module.exports = {
 
             if (command) {
                 try {
+                    // Check for Admin-only commands
+                    if (command.data.adminOnly && !message.member.permissions.has('Administrator')) {
+                        return message.reply('❌ This command requires **Administrator** permissions.');
+                    }
+                    
+                    // Execute the command
                     await command.execute(message, args, client, config);
-                    // --- THE KILL SWITCH ---
+                    
+                    /** * STABILITY FIX: We return here so the XP logic below 
+                     * NEVER runs for a command message. This stops double-posting.
+                     */
                     return; 
                 } catch (error) {
-                    console.error(error);
+                    console.error(`Command Execution Error [${commandName}]:`, error);
                     return;
                 }
             }
         }
 
-        // 3. XP LOGIC (Only runs if 'return' was NOT triggered above)
+        // --- SECTION B: XP & LEVELING SYSTEM ---
+        // This part only executes if the message was NOT a command
         if (!config.levelingEnabled) return;
+
+        // Check for blacklisted channels or roles
+        const isBlacklistedChannel = config.blacklistedChannels?.includes(message.channel.id);
+        const hasBlacklistedRole = message.member.roles.cache.some(role => config.blacklistedRoles?.includes(role.id));
+
+        if (isBlacklistedChannel || hasBlacklistedRole) return;
 
         try {
             const userLevel = await getUserLevel(message.author.id, message.guild.id);
             const now = Date.now();
+            const cooldown = 60000; // 1 minute XP cooldown
+
             const lastMsgTime = userLevel.lastMessage ? new Date(userLevel.lastMessage).getTime() : 0;
             
-            // 1-minute cooldown
-            if (now - lastMsgTime > 60000) {
-                const xpToAdd = Math.floor(Math.random() * 11 + 15);
-                const oldLevel = userLevel.level;
+            if (now - lastMsgTime > cooldown) {
+                // Apply XP Multipliers (Standard 1.0 or custom rate)
+                let multiplier = config.xpRate || 1.0;
+                const xpToAdd = Math.floor((Math.random() * 11 + 15) * multiplier);
                 
+                const oldLevel = userLevel.level;
                 userLevel.xp += xpToAdd;
                 userLevel.lastMessage = now;
-                userLevel.level = calculateLevel(userLevel.xp);
 
-                if (userLevel.level > oldLevel) {
+                // Check if the user leveled up
+                const newLevel = calculateLevel(userLevel.xp);
+
+                if (newLevel > oldLevel) {
+                    userLevel.level = newLevel;
                     await userLevel.save();
-                    // This is where the 2nd message usually comes from!
-                    await LevelingManager.handleLevelUp(message.member, userLevel.level, config);
+
+                    // Send level-up announcement via the Manager
+                    await LevelingManager.handleLevelUp(message.member, newLevel, config);
                 } else {
+                    // Just save the new XP amount
                     await userLevel.save();
                 }
             }
-        } catch (err) {
-            console.error('XP Error:', err);
+        } catch (error) {
+            console.error('XP Processing Error:', error);
         }
-    },
-};
     },
 };
