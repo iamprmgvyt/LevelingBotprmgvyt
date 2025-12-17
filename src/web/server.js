@@ -1,37 +1,26 @@
-const express = require('express');
-const session = require('express-session');
-const passport = require('passport');
-const path = require('path');
+// ... existing imports ...
 
-require(path.join(__dirname, '..', 'config', 'passport-setup.js'));
+const startDashboard = (client) => { // Accept client as argument
+    const app = express();
+    app.set('discordClient', client); // Store client for the routes to use
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-const startDashboard = () => {
     app.set('view engine', 'ejs');
     app.set('views', path.join(__dirname, 'views'));
     
-    app.use(session({
-        secret: process.env.SESSION_SECRET || 'dark-mode-secret',
-        resave: false,
-        saveUninitialized: false
-    }));
+    // Standard Middlewares (Session, Passport, etc)
+    // ... app.use(session...) app.use(passport...)
 
-    app.use(passport.initialize());
-    app.use(passport.session());
+    // Body parser for the POST requests
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
 
-    // --- ROUTES ---
+    // Routes
     app.use('/auth', require('./routes/auth'));
-    app.use('/dashboard', require('./routes/dashboard')); // FIXED: Dashboard route added
+    app.use('/dashboard', require('./routes/dashboard')); // MOUNTED AT /dashboard
 
-    app.get('/', (req, res) => {
-        res.render('index', { user: req.user });
-    });
+    app.get('/', (req, res) => res.render('index', { user: req.user }));
 
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`🌐 Dashboard live at port ${PORT}`);
+    app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+        console.log("🌐 Web Server Ready");
     });
 };
-
-module.exports = { startDashboard };
