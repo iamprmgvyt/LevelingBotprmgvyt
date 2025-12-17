@@ -1,22 +1,22 @@
 const { PermissionsBitField, EmbedBuilder } = require('discord.js');
-const { getGuildConfig, getUserLevel } = require('../../utils/database');
-const { getLevelFromXp } = require('../../utils/xpCalculator');
-const LevelingManager = require('../../utils/LevelingManager'); // Needed for level up announcement/roles
+const { getUserLevel } = require('../../utils/database');
+const { calculateLevel } = require('../../utils/xpCalculator'); // FIXED: Matches new utility name
+const LevelingManager = require('../../utils/LevelingManager');
 
 module.exports = {
     data: {
         name: 'addxp',
         description: 'Manually adds a specified amount of XP to a user.',
         usage: '[,addxp <@user> <amount>]',
-        adminOnly: true // Crucial permission flag
+        adminOnly: true 
     },
     /**
-     * Executes the addxp command.
-     * @param {Message} message - The Discord message object.
-     * @param {string[]} args - Command arguments.
-     * @param {Client} client - The Discord client.
+     * @param {Message} message 
+     * @param {string[]} args 
+     * @param {Client} client 
+     * @param {Object} config - Passed from messageCreate.js
      */
-    async execute(message, args, client) {
+    async execute(message, args, client, config) {
         // Permission check
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
             return message.reply('❌ **Permission Denied.** You must be an **Administrator** to use this command.');
@@ -36,7 +36,7 @@ module.exports = {
         }
 
         try {
-            const config = await getGuildConfig(message.guild.id);
+            // We use the config passed from the event handler for better performance
             const userLevel = await getUserLevel(targetMember.id, message.guild.id);
             
             const oldLevel = userLevel.level;
@@ -45,28 +45,37 @@ module.exports = {
             // Update XP
             userLevel.xp += xpAmount;
             
-            // Recalculate level based on new XP total
-            const newLevel = getLevelFromXp(userLevel.xp);
+            // FIXED: Using calculateLevel (the name from your fixed xpCalculator.js)
+            const newLevel = calculateLevel(userLevel.xp);
             userLevel.level = newLevel;
 
             // Check if level up occurred
             let levelUpNotification = '';
             if (newLevel > oldLevel) {
-                // Manually trigger the level up handlers if a level was gained
-                await LevelingManager.handleLevelUpAnnouncement(targetMember, newLevel, config);
-                await LevelingManager.handleRoleRewards(targetMember, newLevel, config);
-                levelUpNotification = `\n\n🎉 **${targetMember.user.username} leveled up to Level ${newLevel}!** (Automatic announcement sent)`;
+                // Check if LevelingManager has these specific split functions or a single handler
+                try {
+                    if (LevelingManager.handleLevelUpAnnouncement) {
+                        await LevelingManager.handleLevelUpAnnouncement(targetMember, newLevel, config);
+                        await LevelingManager.handleRoleRewards(targetMember, newLevel, config);
+                    } else {
+                        await LevelingManager.handleLevelUp(targetMember, newLevel, config);
+                    }
+                    levelUpNotification = `\n\n🎉 **${targetMember.user.username} leveled up to Level ${newLevel}!**`;
+                } catch (mgrError) {
+                    console.error("LevelingManager error in addxp:", mgrError);
+                }
             }
 
             await userLevel.save();
 
             const embed = new EmbedBuilder()
-                .setColor(config.embedColor)
+                // FIXED: Color fallback to prevent CombinedError
+                .setColor(config.embedColor || '#2ecc71') 
                 .setTitle('➕ XP Added Successfully')
-                .setDescription(`${targetMember.toString()} was granted **${xpAmount} XP** manually by ${message.author.toString()}.`)
+                .setDescription(`${targetMember.toString()} was granted **${xpAmount.toLocaleString()} XP** manually by ${message.author.toString()}.`)
                 .addFields(
-                    { name: 'Old XP / Level', value: `**${oldXp}** XP / Lvl **${oldLevel}**`, inline: true },
-                    { name: 'New XP / Level', value: `**${userLevel.xp}** XP / Lvl **${newLevel}**`, inline: true }
+                    { name: 'Old XP / Level', value: `**${oldXp.toLocaleString()}** XP / Lvl **${oldLevel}**`, inline: true },
+                    { name: 'New XP / Level', value: `**${userLevel.xp.toLocaleString()}** XP / Lvl **${newLevel}**`, inline: true }
                 )
                 .setFooter({ text: `Adjusted by ${message.author.tag}` })
                 .setTimestamp();
@@ -74,8 +83,8 @@ module.exports = {
             await message.reply({ content: levelUpNotification, embeds: [embed] });
 
         } catch (error) {
-            console.error(`Error adding XP for user ${targetMember.id} in guild ${message.guild.id}:`, error);
-            message.reply('❌ An error occurred while trying to update the user\'s XP in the database.');
+            console.error(`Error adding XP for user ${targetMember.id}:`, error);
+            message.reply('❌ An error occurred while updating the database.');
         }
     },
 };
