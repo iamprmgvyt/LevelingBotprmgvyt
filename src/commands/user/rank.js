@@ -1,77 +1,43 @@
-const { EmbedBuilder } = require('discord.js');
-const { getGuildConfig, getUserLevel } = require('../../utils/database');
-const { getXpProgress } = require('../../utils/xpCalculator');
-const GuildConfig = require('../../models/GuildConfig');
+const { AttachmentBuilder } = require('discord.js');
+const { createCanvas, loadImage } = require('canvas');
+const { getUserLevel } = require('../../utils/database');
+const { xpRequiredForLevel } = require('../../utils/xpCalculator');
 
 module.exports = {
-    data: {
-        name: 'rank',
-        aliases: ['level', 'xp'],
-        description: 'Shows your (or another user\'s) current level and XP status in this server.',
-        usage: '[,rank] or [,rank @user]',
-        adminOnly: false
-    },
-    /**
-     * Executes the rank command.
-     * @param {Message} message - The Discord message object.
-     * @param {string[]} args - Command arguments.
-     * @param {Client} client - The Discord client.
-     */
-    async execute(message, args, client) {
-        // Determine the target user (mentioned user or message author)
-        const target = message.mentions.users.first() || message.author;
-        const targetMember = message.guild.members.cache.get(target.id);
-        const guildId = message.guild.id;
+    data: { name: 'rank', description: 'View your current rank card.' },
+    async execute(message) {
+        const userLevel = await getUserLevel(message.author.id, message.guild.id);
+        const nextLevelXp = xpRequiredForLevel(userLevel.level + 1);
 
-        // Fetch configuration and user level data simultaneously
-        const [config, userLevel] = await Promise.all([
-            getGuildConfig(guildId),
-            getUserLevel(target.id, guildId)
-        ]);
-        
-        // Calculate detailed XP progress
-        const { currentLevelXp, requiredXp, progress } = getXpProgress(userLevel.xp, userLevel.level);
-        
-        // --- Create Progress Bar Visual ---
-        const barLength = 10;
-        const filled = '█'; // Filled block emoji/character
-        const empty = '░'; // Empty block emoji/character
-        
-        const filledSegments = Math.floor(progress / barLength);
-        const emptySegments = barLength - filledSegments;
-        
-        const progressBar = `${filled.repeat(filledSegments)}${empty.repeat(emptySegments)}`;
-        
-        const xpToNext = requiredXp - currentLevelXp;
+        const canvas = createCanvas(700, 250);
+        const ctx = canvas.getContext('2d');
 
-        // --- Build Embed ---
-        const rankEmbed = new EmbedBuilder()
-            .setColor(config.embedColor)
-            .setAuthor({ 
-                name: `${target.username}'s Rank`, 
-                iconURL: target.displayAvatarURL({ dynamic: true }) 
-            })
-            .setDescription(`**Level:** ${userLevel.level} 🏅\n**Total XP:** ${userLevel.xp} ✨`)
-            .addFields(
-                { 
-                    name: `Progress to Level ${userLevel.level + 1}`, 
-                    value: `\`[${progressBar}]\` **${progress}%**`,
-                    inline: false 
-                },
-                { 
-                    name: 'Current Level XP', 
-                    value: `${currentLevelXp} / ${requiredXp}`, 
-                    inline: true 
-                },
-                { 
-                    name: 'XP Remaining', 
-                    value: `${xpToNext} XP`, 
-                    inline: true 
-                }
-            )
-            .setThumbnail(target.displayAvatarURL({ dynamic: true }))
-            .setFooter({ text: `Server: ${message.guild.name} | XP Rate: ${config.xpRate}x` });
+        // Background
+        ctx.fillStyle = '#23272a';
+        ctx.fillRect(0, 0, 700, 250);
 
-        await message.reply({ embeds: [rankEmbed] });
-    },
+        // Progress Bar Background
+        ctx.fillStyle = '#484b4e';
+        ctx.fillRect(200, 180, 450, 30);
+
+        // Progress Bar Fill
+        const progress = (userLevel.xp / nextLevelXp) * 450;
+        ctx.fillStyle = '#0099ff';
+        ctx.fillRect(200, 180, progress, 30);
+
+        // Text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '30px sans-serif';
+        ctx.fillText(message.author.username, 200, 70);
+        ctx.fillText(`Level: ${userLevel.level}`, 200, 120);
+        ctx.font = '20px sans-serif';
+        ctx.fillText(`${userLevel.xp} / ${nextLevelXp} XP`, 200, 170);
+
+        // Avatar
+        const avatar = await loadImage(message.author.displayAvatarURL({ extension: 'png' }));
+        ctx.drawImage(avatar, 25, 25, 150, 150);
+
+        const attachment = new AttachmentBuilder(canvas.toBuffer(), { name: 'rank.png' });
+        message.reply({ files: [attachment] });
+    }
 };
