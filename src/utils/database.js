@@ -1,10 +1,11 @@
 const mongoose = require('mongoose');
-const GuildConfig = require('../models/GuildConfig'); // Ensure this path is correct
+const GuildConfig = require('../models/GuildConfig');
+const UserLevel = require('../models/UserLevel');
 
 const connectDB = async () => {
     const uri = process.env.MONGODB_URI;
     if (!uri) {
-        console.error('❌ MONGODB_URI is missing in Environment Variables!');
+        console.error('❌ MONGODB_URI is missing!');
         process.exit(1);
     }
     try {
@@ -15,21 +16,32 @@ const connectDB = async () => {
     }
 };
 
-/**
- * Fetches guild config or creates a default one if it doesn't exist
- */
 async function getGuildConfig(guildId) {
     let config = await GuildConfig.findOne({ guildId });
     if (!config) {
-        config = new GuildConfig({ 
-            guildId, 
-            prefix: '!', 
-            levelingEnabled: true 
-        });
+        config = new GuildConfig({ guildId });
         await config.save();
     }
     return config;
 }
 
-// FULL FIXED EXPORT
-module.exports = { connectDB, getGuildConfig };
+async function getUserLevel(userId, guildId) {
+    let user = await UserLevel.findOne({ userId, guildId });
+    if (!user) {
+        user = new UserLevel({ 
+            userId, 
+            guildId, 
+            xp: 0, 
+            level: 0, 
+            lastMessage: new Date(0) 
+        });
+    }
+    return user;
+}
+
+// FULL FIXED EXPORTS
+module.exports = { 
+    connectDB, 
+    getGuildConfig, 
+    getUserLevel 
+};
