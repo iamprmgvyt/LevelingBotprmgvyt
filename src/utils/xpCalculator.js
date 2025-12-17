@@ -1,58 +1,29 @@
 /**
- * Core Leveling Formulas (Fixed for MessageCreate compatibility)
+ * Logic for XP calculation and progress bars
  */
+const calculateLevel = (xp) => Math.floor(0.1 * Math.sqrt(xp));
+const calculateXp = (level) => Math.pow(level / 0.1, 2);
 
-// Formula for required XP to reach the next level
-const requiredXpToLevel = (level) => {
-    return 5 * Math.pow(level, 2) + 50 * level + 100;
-};
-
-// Total cumulative XP required to reach a specific level
-const totalXpRequiredForLevel = (level) => {
-    let totalXp = 0;
-    for (let i = 0; i < level; i++) {
-        totalXp += requiredXpToLevel(i);
-    }
-    return totalXp;
-};
-
-/**
- * RENAMED TO calculateLevel to match your event handler
- * This finds the current level based on total accumulated XP
- */
-const calculateLevel = (xp) => {
-    let level = 0;
-    while (xp >= totalXpRequiredForLevel(level + 1)) {
-        level++;
-    }
-    return level;
-};
-
-// Details for the ,rank command progress bar
-const getXpProgress = (currentXp, currentLevel) => {
-    const xpForThisLevel = totalXpRequiredForLevel(currentLevel);
-    const xpForNextLevel = totalXpRequiredForLevel(currentLevel + 1);
+function getXpProgress(xp, level) {
+    const currentLevelXp = calculateXp(level);
+    const nextLevelXp = calculateXp(level + 1);
+    const xpRequiredForNextLevel = nextLevelXp - currentLevelXp;
+    const xpGainedInCurrentLevel = xp - currentLevelXp;
     
-    const currentLevelXp = currentXp - xpForThisLevel;
-    const requiredXp = xpForNextLevel - xpForThisLevel;
-    
+    let progress = Math.floor((xpGainedInCurrentLevel / xpRequiredForNextLevel) * 100);
+    if (progress < 0) progress = 0;
+    if (progress > 100) progress = 100;
+
     return {
-        currentLevelXp, 
-        requiredXp,     
-        progress: requiredXp === 0 ? 100 : Math.floor((currentLevelXp / requiredXp) * 100)
+        progress: progress,
+        requiredXp: Math.floor(xpRequiredForNextLevel),
+        currentLevelXp: Math.floor(xpGainedInCurrentLevel)
     };
-};
+}
 
-// Random XP gain per message
-const getRandomXp = () => {
-    return Math.floor(Math.random() * (25 - 15 + 1)) + 15;
-};
-
-// EXPORTS - Names here MUST match the destructuring in messageCreate.js
-module.exports = { 
-    calculateLevel, // This was getLevelFromXp
-    requiredXpToLevel, 
-    totalXpRequiredForLevel, 
-    getXpProgress,
-    getRandomXp
+// Ensure this EXACT export exists
+module.exports = {
+    calculateLevel,
+    calculateXp,
+    getXpProgress
 };
