@@ -2,18 +2,17 @@ const express = require('express');
 const router = express.Router();
 const passport = require('passport');
 
-// This handles BOTH /auth/login AND /auth/discord
+// 1. Initial Login Request
 router.get('/login', passport.authenticate('discord'));
 router.get('/discord', passport.authenticate('discord'));
 
-// The Callback (Must match your Discord Developer Portal Redirect URI)
+// 2. The Callback handler (Discord sends the user here)
 router.get('/discord/callback', passport.authenticate('discord', {
+    successRedirect: '/dashboard',
     failureRedirect: '/'
-}), (req, res) => {
-    res.redirect('/dashboard');
-});
+}));
 
-// Logout
+// 3. Logout handler
 router.get('/logout', (req, res, next) => {
     req.logout((err) => {
         if (err) return next(err);
