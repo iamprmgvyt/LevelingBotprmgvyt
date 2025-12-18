@@ -3,31 +3,53 @@ const { EmbedBuilder } = require('discord.js');
 module.exports = {
     data: {
         name: 'help',
-        description: 'List all commands or info about a specific command',
-        aliases: ['h']
+        aliases: ['h', 'commands', 'info'],
+        description: 'Lists all available commands or gives info about a specific one.'
     },
     async execute(message, args, client, config) {
-        // Fallback: If config is missing or doesn't have an embedColor, use Indigo
-        const embedColor = (config && config.embedColor) ? config.embedColor : '#6366f1';
+        const prefix = config.prefix || ',';
+        const themeColor = config.embedColor || '#5865F2';
 
-        const embed = new EmbedBuilder()
-            .setTitle('📚 Bot Commands')
-            .setColor(embedColor) // FIXED: Never undefined now
-            .setDescription(`My current prefix for this server is: \`${config.prefix || '!'}\``)
-            .setTimestamp();
+        // 1. General Help Menu (No arguments provided)
+        if (!args[0]) {
+            const helpEmbed = new EmbedBuilder()
+                .setTitle('📖 Command Menu')
+                .setThumbnail(client.user.displayAvatarURL())
+                .setColor(themeColor)
+                .setDescription(`My current prefix is: \`${prefix}\`\nUse \`${prefix}help [command]\` for specific details.`)
+                .setTimestamp();
 
-        // Organize commands by category (assuming your folders are categorized)
-        const categories = {};
-        client.commands.forEach(cmd => {
-            const cat = cmd.category || 'General';
-            if (!categories[cat]) categories[cat] = [];
-            categories[cat].push(`\`${cmd.data.name}\``);
-        });
+            // Format the list of commands
+            const commandList = client.commands.map(cmd => {
+                return `**${prefix}${cmd.data.name}** - ${cmd.data.description}`;
+            }).join('\n');
 
-        for (const [category, commands] of Object.entries(categories)) {
-            embed.addFields({ name: category, value: commands.join(', '), inline: false });
+            helpEmbed.addFields({ 
+                name: '✨ Available Commands', 
+                value: commandList || 'No commands found.' 
+            });
+
+            return message.reply({ embeds: [helpEmbed] });
         }
 
-        return message.reply({ embeds: [embed] });
+        // 2. Specific Command Detail (e.g., ,help level)
+        const query = args[0].toLowerCase();
+        const command = client.commands.get(query) || 
+                        client.commands.find(cmd => cmd.data.aliases && cmd.data.aliases.includes(query));
+
+        if (!command) {
+            return message.reply(`❌ I couldn't find a command called \`${query}\`.`);
+        }
+
+        const detailEmbed = new EmbedBuilder()
+            .setTitle(`Command Details: ${command.data.name}`)
+            .setColor(themeColor)
+            .addFields(
+                { name: 'Description', value: command.data.description || 'No description provided.' },
+                { name: 'Aliases', value: command.data.aliases ? `\`${command.data.aliases.join(', ')}\`` : 'None' },
+                { name: 'Usage', value: `\`${prefix}${command.data.name}\`` }
+            );
+
+        return message.reply({ embeds: [detailEmbed] });
     }
 };
