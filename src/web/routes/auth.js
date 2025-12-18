@@ -2,19 +2,18 @@ const express = require('express');
 const router = express.Router();
 const passport = require('passport');
 
-// 1. THE MISSING ROUTE: /auth/login
+// This handles BOTH /auth/login AND /auth/discord
 router.get('/login', passport.authenticate('discord'));
+router.get('/discord', passport.authenticate('discord'));
 
-// 2. THE CALLBACK: /auth/discord/callback
-// This is where Discord sends the user back after they click "Authorize"
+// The Callback (Must match your Discord Developer Portal Redirect URI)
 router.get('/discord/callback', passport.authenticate('discord', {
     failureRedirect: '/'
 }), (req, res) => {
-    // Redirect to the dashboard on successful login
     res.redirect('/dashboard');
 });
 
-// 3. THE LOGOUT: /auth/logout
+// Logout
 router.get('/logout', (req, res, next) => {
     req.logout((err) => {
         if (err) return next(err);
