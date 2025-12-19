@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const UserLevel = require('../../models/UserLevel');
-const { getGuildConfig } = require('../../utils/database');
+const GuildConfig = require('../../models/GuildConfig');
 
 // Middleware to check if user is logged in
 const isAuthenticated = (req, res, next) => {
@@ -9,67 +8,54 @@ const isAuthenticated = (req, res, next) => {
     res.redirect('/auth/login');
 };
 
-// 1. MAIN DASHBOARD PAGE (List of Servers)
-router.get('/', isAuthenticated, async (req, res) => {
-    const client = req.app.get('discordClient');
-    
-    // Filter servers where the user has 'Manage Guild' or 'Administrator' permissions
-    const guilds = req.user.guilds.filter(guild => {
-        const permissions = BigInt(guild.permissions);
-        return (permissions & BigInt(0x20)) === BigInt(0x20) || (permissions & BigInt(0x8)) === BigInt(0x8);
-    });
-
-    res.render('dashboard/index', {
-        user: req.user,
-        guilds: guilds,
-        client: client
-    });
-});
-
-// 2. SERVER SETTINGS PAGE
+// SERVER SETTINGS PAGE (GET)
 router.get('/server/:guildId', isAuthenticated, async (req, res) => {
     const { guildId } = req.params;
     const client = req.app.get('discordClient');
     const guild = client.guilds.cache.get(guildId);
 
-    if (!guild) {
-        return res.redirect('https://discord.com/api/oauth2/authorize?client_id=' + client.user.id + '&permissions=8&scope=bot');
-    }
+    if (!guild) return res.redirect('/dashboard');
 
     try {
-        const config = await getGuildConfig(guildId);
-        const topUsers = await UserLevel.find({ guildId }).sort({ xp: -1 }).limit(5);
+        // Find existing config or create a default one
+        let config = await GuildConfig.findOne({ guildId });
+        if (!config) {
+            config = await GuildConfig.create({ guildId });
+        }
 
         res.render('dashboard/server', {
             user: req.user,
             guild: guild,
-            config: config,
-            topUsers: topUsers
+            config: config // This sends the SAVED data to the HTML
         });
     } catch (error) {
-        console.error('Dashboard Error:', error);
-        res.status(500).send('Internal Server Error');
+        res.status(500).send("Error loading settings");
     }
 });
 
-// 3. SAVE SETTINGS (POST)
+// SAVE SETTINGS (POST)
 router.post('/server/:guildId/save', isAuthenticated, async (req, res) => {
     const { guildId } = req.params;
-    const { prefix, levelingEnabled, xpRate, embedColor } = req.body;
+    
+    // Logic for checkbox: if it's missing in req.body, it means it's OFF
+    const levelingEnabled = req.body.levelingEnabled === 'on';
 
     try {
-        const config = await getGuildConfig(guildId);
-        
-        config.prefix = prefix || config.prefix;
-        config.levelingEnabled = levelingEnabled === 'on';
-        config.xpRate = parseFloat(xpRate) || 1.0;
-        config.embedColor = embedColor || config.embedColor;
+        await GuildConfig.findOneAndUpdate(
+            { guildId: guildId },
+            { 
+                prefix: req.body.prefix,
+                levelingEnabled: levelingEnabled,
+                xpRate: parseFloat(req.body.xpRate),
+                embedColor: req.body.embedColor
+            },
+            { upsert: true, new: true } // Upsert ensures it creates it if it doesn't exist
+        );
 
-        await config.save();
         res.redirect(`/dashboard/server/${guildId}?success=true`);
     } catch (error) {
-        console.error('Save Error:', error);
-        res.status(500).send('Error saving configuration');
+        console.error("Save Error:", error);
+        res.status(500).send("Error saving settings");
     }
 });
 
